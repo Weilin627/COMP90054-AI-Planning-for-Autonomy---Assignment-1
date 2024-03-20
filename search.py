@@ -18,6 +18,7 @@ Pacman agents (in searchAgents.py).
 """
 
 import util
+import pdb
 from game import Actions
 from game import Directions
 from util import foodGridtoDic
@@ -129,8 +130,71 @@ def foodHeuristic(state, problem):
     "*** YOUR CODE HERE for task1 ***"
 
     # comment the below line after you implement the algorithm
-    util.raiseNotDefined()
 
+    class BFSSearch:
+        def __init__(self, walls):
+            self.walls = walls
+            self.distances = {}
+
+        def min_distance(self, source, target) -> int:
+            if (source, target) in self.distances:
+                return self.distances[(source, target)]
+            min_distance = self.bfs_distance(source, target)
+            self.distances[(source, target)] = min_distance
+            return min_distance
+
+        def get_neighbors(self, source) -> list:
+            neighbors = []
+            x, y = source
+            if self.walls[x+1][y] is False:
+                neighbors.append((x+1, y))
+            if self.walls[x-1][y] is False:
+                neighbors.append((x-1, y))
+            if self.walls[x][y+1] is False:
+                neighbors.append((x, y+1))
+            if self.walls[x][y-1] is False:
+                neighbors.append((x, y-1))
+            return neighbors
+
+        def bfs_distance(self, source, target) -> int:
+            queue = util.Queue()
+            queue.push(source)
+            vistors = {}
+            distances = {}
+            distances[source] = 0
+            while not queue.isEmpty():
+                node = queue.pop()
+                if node in vistors:
+                    continue
+                vistors[node] = True
+                distance = distances[node]
+                if node[0] == target[0] and node[1] == target[1]:
+                    return distance
+                for next in self.get_neighbors(node):
+                    if next not in distances:
+                        distances[next] = distance + 1
+                    else:
+                        distances[next] = min(distance + 1, distances[next])
+                    queue.push(next)
+            return None
+
+    if 'bfs' not in problem.heuristicInfo:
+        bfs = BFSSearch(problem.walls)
+        problem.heuristicInfo['bfs'] = bfs
+    
+    bfs = problem.heuristicInfo['bfs']
+
+    pacman_position, food_grid = state
+    food_positions = food_grid.asList()
+
+    if len(food_positions) == 0:
+        return 0
+
+    max_distance = 0
+    for food_pos in food_positions:
+        max_distance = max(max_distance, bfs.min_distance(pacman_position, food_pos))
+
+    return max_distance
 
 class MAPFProblem(SearchProblem):
     """
@@ -156,9 +220,9 @@ class MAPFProblem(SearchProblem):
     def isGoalState(self, state):
         "Return if the state is the goal state"
         "*** YOUR CODE HERE for task2 ***"
-
         # comment the below line after you implement the function
-        util.raiseNotDefined()
+        food_grid = state[1]
+        return len(food_grid.asList(False)) == (food_grid.width * food_grid.height)
 
     def getSuccessors(self, state):
         """
@@ -175,9 +239,85 @@ class MAPFProblem(SearchProblem):
 
         """
         "*** YOUR CODE HERE for task2 ***"
-
         # comment the below line after you implement the function
-        util.raiseNotDefined()
+
+        class SuccessorActions:
+            def __init__(self, walls, state):
+                self.walls = walls
+                self.names = []
+                self.food_grid = state[1].copy()
+                self.origin_position_dict = state[0]
+                for name in self.origin_position_dict.keys():
+                    self.names.append(name)
+
+            def get_actions(self, postion) -> list:
+                actions = []
+                for direction in [Directions.NORTH, Directions.SOUTH, Directions.EAST, Directions.WEST, Directions.STOP]:
+                    dx, dy = Actions.directionToVector(direction)
+                    nx, ny = int(postion[0] + dx), int(postion[1] + dy)
+                    if self.walls[nx][ny] is False:
+                        actions.append(((nx, ny), direction))
+                return actions
+
+            def has_actions(self, postions_dict, name, postion) -> bool:
+                if name not in postions_dict:
+                    return False
+                return self.same_postion(postions_dict[name], postion)
+
+            def same_postion(self, pos1, pos2) -> bool:
+                return pos1[0] == pos2[0] and pos1[1] == pos2[1]
+        
+            def origin_postion(self, name) -> tuple:
+                return self.origin_position_dict[name]
+
+            def has_conflict(self, postions_dict : dict, next_name, next_postion) -> bool:
+                for other_postion in postions_dict.values():
+                    if self.same_postion(next_postion, other_postion):
+                        return True
+                for origin_name, origin_postion in self.origin_position_dict.items():
+                    if next_name == origin_name:
+                        continue
+                    if self.same_postion(next_postion, origin_postion):
+                        if self.has_actions(postions_dict, origin_name, self.origin_postion(next_name)):
+                            return True
+                return False
+
+            def deep_copy_dict(self, source_dict) -> dict:
+                dict_copy = {}
+                for name, direction in source_dict.items():
+                    dict_copy[name] = direction
+                return dict_copy
+
+            def get_successors(self, index : int, postions_dict : dict, direction_dict : dict, food_grid) -> list:
+                successors = []
+                name = self.names[index]
+                now_postion = self.origin_postion(name)
+                actions = self.get_actions(now_postion)
+                for action in actions:
+                    next_postion, direction = action
+                    if self.has_conflict(postions_dict, name, next_postion):
+                        continue
+
+                    next_food_grid = food_grid.copy()
+                    next_x, next_y = next_postion
+                    if next_food_grid[next_x][next_y] == name:
+                        next_food_grid[next_x][next_y] = False
+
+                    next_postions_dict = self.deep_copy_dict(postions_dict)
+                    next_direction_dict = self.deep_copy_dict(direction_dict)
+
+                    next_postions_dict[name] = next_postion
+                    next_direction_dict[name] = direction
+
+                    if index + 1 == len(self.names):
+                        successors.append(((next_postions_dict, next_food_grid), next_direction_dict, 1))
+                    else:
+                        successors = successors + self.get_successors(index + 1, next_postions_dict, next_direction_dict, next_food_grid)
+                return successors
+
+        successor = SuccessorActions(self.walls, state)
+        # pdb.set_trace()
+        return successor.get_successors(0, {}, {}, successor.food_grid)
 
 
 def conflictBasedSearch(problem: MAPFProblem):
