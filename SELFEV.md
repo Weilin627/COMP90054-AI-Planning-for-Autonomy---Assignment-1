@@ -4,7 +4,7 @@
 
 **Semester:** Semester 1, 2024
 
-**Student:**
+**Student:** Weilin Wang - 1214059 - weilwang1
 
 your full name - your student number - your canvas student login
 
@@ -28,7 +28,7 @@ their github codebase**. Their codebase should be private, you will not have acc
 
 #### Self Evaluated Marks (2 marks):
 
-0
+1
 
 > [!IMPORTANT]
 > Please replace the above 0 with the mark you think you earned for this part. Consider how many (yours/ours) tests

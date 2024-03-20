@@ -18,7 +18,6 @@ Pacman agents (in searchAgents.py).
 """
 
 import util
-import pdb
 from game import Actions
 from game import Directions
 from util import foodGridtoDic
@@ -316,7 +315,6 @@ class MAPFProblem(SearchProblem):
                 return successors
 
         successor = SuccessorActions(self.walls, state)
-        # pdb.set_trace()
         return successor.get_successors(0, {}, {}, successor.food_grid)
 
 
@@ -328,9 +326,180 @@ def conflictBasedSearch(problem: MAPFProblem):
 
     """
     "*** YOUR CODE HERE for task3 ***"
-
     # comment the below line after you implement the function
-    util.raiseNotDefined()
+    
+    def same_postion(pos1, pos2) -> bool:
+        return pos1[0] == pos2[0] and pos1[1] == pos2[1]
+
+    def get_neighbors(state) -> list:
+        neighbors = []
+        x, y = state
+        if walls[x+1][y] is False:
+            neighbors.append((x+1, y))
+        if walls[x-1][y] is False:
+            neighbors.append((x-1, y))
+        if walls[x][y+1] is False:
+            neighbors.append((x, y+1))
+        if walls[x][y-1] is False:
+            neighbors.append((x, y-1))
+        neighbors.append(state)
+        return neighbors
+
+    def bfs_distance(source, target) -> int:
+        queue = util.Queue()
+        queue.push(source)
+        vistors = {}
+        distances = {}
+        distances[source] = 0
+        while not queue.isEmpty():
+            node = queue.pop()
+            if node in vistors:
+                continue
+            vistors[node] = True
+            distance = distances[node]
+            if same_postion(node, target):
+                return distance
+            for next in get_neighbors(node):
+                if next not in distances:
+                    distances[next] = distance + 1
+                else:
+                    distances[next] = min(distance + 1, distances[next])
+                queue.push(next)
+        return 999999
+
+    def get_distance(source, target) -> int:
+        if (source, target) in full_distances:
+            return full_distances[(source, target)]
+        min_distance = bfs_distance(source, target)
+        full_distances[(source, target)] = min_distance
+        return min_distance
+
+    def cost_solutions(solutions : dict) -> int:
+        sum_cost = 0
+        for path in solutions.values():
+            sum_cost += len(path)
+        return sum_cost
+
+    def copy_solutions(solutions : dict) -> dict:
+        new_solutions = {}
+        for name, path in solutions.items():
+            new_solutions[name] = path[:]
+        return new_solutions
+
+    def has_constraint(constraints, cost, state):
+        for cons_cost, cons_state in constraints:
+            if cons_cost == cost and same_postion(cons_state, state):
+                return True
+        return False
+
+    def check_postions(postions : list) -> tuple:
+        # pdb.set_trace()
+        length = len(postions)
+        for i in range(0, length - 1):
+            for j in (range(1, length)):
+                if same_postion(postions[i], postions[j]):
+                    return ((i, j), postions[i])
+        return ((-1, -1), (-1, -1))
+
+    def convert_solutions_direction(solutions : dict) -> list:
+        actions = {}
+        for name, path in solutions.items():
+            directions = []
+            for i in range(1, len(path)):
+                vector = (path[i][0] - path[i-1][0], path[i][1] - path[i-1][1])
+                action = Actions().vectorToDirection(vector)
+                directions.append(action)
+            actions[name] = directions
+        return actions
+
+    def check_solutions(solutions : dict) -> tuple:
+        # pdb.set_trace()
+
+        names = []
+        max_step = 0
+        for name, path in solutions.items():
+            names.append(name)
+            max_step = max(max_step, len(path))
+        for step in range(max_step):
+            postions = []
+            for name in names:
+                if step < len(solutions[name]):
+                    postions.append(solutions[name][step])
+                else:
+                    postions.append(solutions[name][-1])
+            result, postion = check_postions(postions)
+            if result == (-1, -1):
+                continue
+            name_i = names[result[0]]
+            name_j = names[result[1]]
+            # if step >= len(solutions[name_i]) - 1:
+            #     return (step, name_i, postion)
+            return (step, name_i, postion)
+        return (-1, '', (-1, -1))
+
+    def find_individual_path(source, target, constraints):
+        queue = util.PriorityQueue()
+        source_node = (source, 0, [source])
+        distance = get_distance(source, target)
+        queue.push(source_node, distance)
+        best_g = dict()
+        len_cons_cost = len(constraints)
+        while not queue.isEmpty():
+            state, cost, path = queue.pop()
+            if (not state in best_g) or (cost <= (best_g[state] + len_cons_cost)):
+                if state in best_g:
+                    best_g[state] = min(cost, best_g[state])
+                else:
+                    best_g[state] = cost
+                if same_postion(state, target):
+                    return path
+                neighbors = get_neighbors(state)
+                for next_state in neighbors:
+                    if has_constraint(constraints, cost + 1, next_state):
+                        continue
+                    new_node = (next_state, cost + 1, path + [next_state])
+                    distance = get_distance(source, target)
+                    queue.push(new_node, distance + cost + 1)
+        return None
+
+
+    state_dict, food_grid = problem.getStartState()
+    names = []
+    for name in state_dict.keys():
+        names.append(name)
+
+    walls = problem.walls
+    solutions = {}
+    constraints = {}
+    full_distances = {}
+
+    for name in names:
+        constraints[name] = []
+        source = state_dict[name]
+        target = food_grid.asList(name)[0]
+        solutions[name] = find_individual_path(source, target, constraints[name])
+
+    queue = util.PriorityQueue()
+    node = (copy_solutions(solutions), copy_solutions(constraints))
+    queue.push(node, cost_solutions(solutions))
+    
+    while not queue.isEmpty():
+        solutions, constraints = queue.pop()
+        step, name, postion = check_solutions(solutions)
+        if step == -1:
+            return convert_solutions_direction(solutions)
+
+        new_constraints = copy_solutions(constraints)
+        new_constraints[name].append((step, postion))
+
+        target = food_grid.asList(name)[0]
+        source = state_dict[name]
+
+        new_solutions = copy_solutions(solutions)
+        new_solutions[name] = find_individual_path(source, target, new_constraints[name])
+        node = (copy_solutions(new_solutions), copy_solutions(new_constraints))
+        queue.push(node, cost_solutions(new_solutions))
+    return None
 
 
 "###WARNING: Altering the following functions is STRICTLY PROHIBITED. Failure to comply may result in a grade of 0 for Assignment 1.###"
